@@ -22,10 +22,9 @@ vector<uint8_t> *Router::getRoute(Node *start, Node *end)
 {
     route.clear();
 
-    route.push_back(Router::MOVES::SOUTH);
+    route.push_back(Router::MOVES::NORTH);
+    route.push_back(Router::MOVES::NORTH);
     route.push_back(Router::MOVES::EAST);
-    route.push_back(Router::MOVES::SOUTH);
-    route.push_back(Router::MOVES::WEST);
 
     return &route;
 }

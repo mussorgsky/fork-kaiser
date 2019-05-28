@@ -4,169 +4,225 @@
 
 #include <vector>
 
-#include "ColorSensor.hpp"
-#include "Node.hpp"
-#include "Router.hpp"
+// #include "ColorSensor.hpp"
+// #include "Node.hpp"
+// #include "Router.hpp"
 
 using namespace hFramework;
 using std::vector;
 
-hGPIO *leftSensor, *centerSensor, *rightSensor;
+hGPIO *lineSensor, *markerDetector;
 hMotor *leftMotor, *rightMotor, *winchMotor;
 
-void turnToDirection(uint8_t target, uint8_t *current, uint16_t power)
-{
-	if(target == *current) {
-		return;
-	}
-
-	bool toLeft = false;
-	if((target == Router::MOVES::NORTH && *current == Router::MOVES::EAST)
-	|| (target == Router::MOVES::EAST && *current == Router::MOVES::SOUTH)
-	|| (target == Router::MOVES::SOUTH && *current == Router::MOVES::WEST)
-	|| (target == Router::MOVES::WEST && *current == Router::MOVES::NORTH)) {
-		 toLeft = true;
-	}
-
-	*current = target;
-
-	// Each wheel goes one quarter of a circle
-	int16_t angle = (int16_t) (15.6f * 0.25f / 8.16f * 1.666f * 720.0f);
-	angle *= (toLeft) ? -1 : 1;
-	leftMotor->rotRel(angle, power);
-	rightMotor->rotRel(-angle, power, true);
-
-	leftMotor->stopRegulation();
-	rightMotor->stopRegulation();
-
-	sys.delay(250);
-}
-
-void driveUntilCheckpoint(uint16_t power)
-{
-	leftMotor->setPower(power);
-	rightMotor->setPower(power);
-
-	sys.delay(250);
-
-	while(!(leftSensor->read() && centerSensor->read() && rightSensor->read())) {
-		if(centerSensor->read()) {
-			leftMotor->setPower(50);
-			rightMotor->setPower(500);
-		} else {
-			leftMotor->setPower(500);
-			rightMotor->setPower(50);
-		}
-		
-		
-		sys.delay(10);
-	}
-
-	leftMotor->setPower(0);
-	rightMotor->setPower(0);
-
-	sys.delay(1000);
-}
-
-uint64_t getTurnAroundTime(int16_t power)
-{
-	uint64_t startTime = sys.getRefTime();
-	hMot1.setPower(power);
-	hMot2.setPower(-power);
-
-	bool previous = hExt.pin3.read();
-	bool current = previous;
-
-	while(true) {
-		current = hExt.pin3.read();
-		if(current != previous) {
-			previous = current;
-			if(current == true) {
-				break;
-			}
-		}
-		sys.delay(10);
-	}
-
-	uint64_t stopTime = sys.getRefTime();
-
-	uint64_t turnTime = (stopTime - startTime);
-
-	hMot1.setPower(0);
-	hMot2.setPower(0);
-
-	sys.delay(1000);
-
-	hMot1.setPower(power);
-	hMot2.setPower(-power);
-
-	sys.delay(turnTime);
-
-	hMot1.setPower(0);
-	hMot2.setPower(0);
-
-	sys.delay(1000);
-
-	return turnTime;
-}
-
+enum Decisions { FORWARD };
 
 void hMain()
 {
 	sys.setLogDev(&Serial);
-
 	printf("Battery voltage: %fV\r\n", sys.getSupplyVoltage());
 
-	leftSensor = &hExt.i2c.pinSda;
-	centerSensor = &hExt.spi.pinMiso;
-	rightSensor = &hExt.serial.pinTx;
-	leftSensor->setIn();
-	centerSensor->setIn();
-	rightSensor->setIn();
-
+	// Setting up the motors
 	leftMotor = &hMotD;
 	rightMotor = &hMotA;
 	winchMotor = &hMotB;
 	leftMotor->setEncoderPolarity(Polarity::Reversed);
 	rightMotor->setEncoderPolarity(Polarity::Reversed);
 	winchMotor->setEncoderPolarity(Polarity::Reversed);
-	
-	ColorSensor cs = ColorSensor(&hExt.pin2, &hExt.pin1, &hExt.pin4, &hExt.pin3, &hExt.pin5, &hExt.serial.pinRx);
-	cs.init();
 
-	vector<Node> world = { Node("home"), Node("bayA") };
-	Node *homeNode = &world.at(0);
-	Node *target = &world.at(1);
+	// Setting up the sensors
+	lineSensor = &hExt.getPin(7);
+	markerDetector = &hExt.getPin(9);
+	lineSensor->setIn();
+	markerDetector->setIn();
 
-	uint8_t bearing = Router::MOVES::SOUTH;
-
-	Router gps = Router(&world);
-	vector<uint8_t> *route;
-
-	// Main loop
-	while(true) {
-		// Wait for button press, so it doesn't run away
-		while(!hBtn1.isPressed()) {
-			sys.delay(100);
-		}
-
-		route = gps.getRoute(homeNode, target);
-		for(auto direction : *route) {
-			printf("%d\r\n", direction);
-			
-			printf("Turning\r\n");
-			turnToDirection(direction, &bearing, 1000);
-
-			sys.delay(100);
-			printf("Driving\r\n");
-			driveUntilCheckpoint(500);
-		}
-
-		break;
+	// Waiting for a button before going
+	while(!hBtn1.isPressed()) {
+		sys.delay(100);
 	}
 
-	sys.delay(1000);
+	//
+	bool detecting = true;
+	uint64_t detectStopTime = 0;
+	uint64_t ignorancePeriod = 3000;
+	uint8_t decision = Decisions::FORWARD;
+
+	bool lastSense = lineSensor->read();
+	bool sense, marker;
+	bool boosted = false;
+	uint16_t offset = 0;
+
+	while(true) {
+		sense = lineSensor->read();
+		marker = markerDetector->read();
+
+		if(detecting && marker) {
+			rightMotor->setPower(0);
+			leftMotor->setPower(0);
+			sys.delay(1500);
+
+			detectStopTime = sys.getRefTime();
+			detecting = false;
+		}
+
+		if(!detecting && sys.getRefTime() > detectStopTime + ignorancePeriod) {
+			detecting = true;
+			boosted = false;
+		}
+
+		if(sense == lastSense) {
+			offset += 5;
+		} else {
+			offset = 0;
+		}
+
+		if(offset > 500) {
+			offset = 500;
+		}
+
+		if(!boosted && !detecting && offset < 25) {
+			rightMotor->setPower(1000);
+			leftMotor->setPower(1000);
+			sys.delay(500);
+			boosted = true;
+			continue;
+		}
+
+		if(lineSensor->read()) {
+			rightMotor->setPower(0 - offset*2);
+			leftMotor->setPower(500);
+		} else {
+			rightMotor->setPower(500);
+			leftMotor->setPower(0 - offset*2);
+		}
+
+		lastSense = sense;
+		sys.delay(10);
+	}
 }
+
+// void takeTurn(uint8_t target, uint8_t *current, uint16_t power)
+// {
+// 	if(target == *current) {
+// 		return;
+// 	}
+
+// 	bool toLeft = false;
+// 	if((target == Router::MOVES::NORTH && *current == Router::MOVES::EAST)
+// 	|| (target == Router::MOVES::EAST && *current == Router::MOVES::SOUTH)
+// 	|| (target == Router::MOVES::SOUTH && *current == Router::MOVES::WEST)
+// 	|| (target == Router::MOVES::WEST && *current == Router::MOVES::NORTH)) {
+// 		 toLeft = true;
+// 	}
+
+// 	*current = target;
+
+// 	// Each wheel goes one quarter of a circle
+// 	int16_t angle = (int16_t) (15.6f * 0.125f / 8.16f * 1.666f * 720.0f);
+// 	angle *= (toLeft) ? -1 : 1;
+// 	leftMotor->rotRel(angle, power);
+// 	rightMotor->rotRel(-angle, power, true);
+
+// 	leftMotor->stopRegulation();
+// 	rightMotor->stopRegulation();
+
+// 	leftMotor->setPower(power);
+// 	rightMotor->setPower(power);
+
+// 	sys.delay(250);
+
+// 	leftMotor->setPower(0);
+// 	rightMotor->setPower(0);
+// }
+
+// void driveUntilCheckpoint(uint16_t power)
+// {
+// 	leftMotor->setPower(power);
+// 	rightMotor->setPower(power);
+
+// 	sys.delay(250);
+
+// 	while(!(leftSensor->read() && centerSensor->read() && rightSensor->read())) {
+// 		if(centerSensor->read()) {
+// 			leftMotor->setPower(10);
+// 			rightMotor->setPower(500);
+// 		} else {
+// 			leftMotor->setPower(500);
+// 			rightMotor->setPower(10);
+// 		}
+		
+		
+// 		sys.delay(25);
+// 	}
+
+// 	leftMotor->setPower(0);
+// 	rightMotor->setPower(0);
+
+// 	sys.delay(2500);
+// }
+
+// void hMain()
+// {
+// 	sys.setLogDev(&Serial);
+
+// 	printf("Battery voltage: %fV\r\n", sys.getSupplyVoltage());
+
+// 	leftSensor = &hExt.i2c.pinSda;
+// 	centerSensor = &hExt.spi.pinMiso;
+// 	rightSensor = &hExt.serial.pinTx;
+// 	leftSensor->setIn();
+// 	centerSensor->setIn();
+// 	rightSensor->setIn();
+
+// 	leftMotor = &hMotD;
+// 	rightMotor = &hMotA;
+// 	winchMotor = &hMotB;
+// 	leftMotor->setEncoderPolarity(Polarity::Reversed);
+// 	rightMotor->setEncoderPolarity(Polarity::Reversed);
+// 	winchMotor->setEncoderPolarity(Polarity::Reversed);
+	
+// 	// ColorSensor cs = ColorSensor(&hExt.pin2, &hExt.pin1, &hExt.pin4, &hExt.pin3, &hExt.pin5, &hExt.serial.pinRx);
+// 	// cs.init();
+
+// 	vector<Node> world = { Node("home"), Node("bayA") };
+// 	Node *homeNode = &world.at(0);
+// 	Node *target = &world.at(1);
+
+// 	uint8_t bearing = Router::MOVES::NORTH;
+
+// 	Router gps = Router(&world);
+// 	vector<uint8_t> *route;
+
+// 	// Main loop
+// 	while(true) {
+// 		// Wait for button press, so it doesn't run away
+// 		while(!hBtn1.isPressed()) {
+// 			hLED1.set(leftSensor->read());
+// 			hLED2.set(centerSensor->read());
+// 			hLED3.set(rightSensor->read());
+
+// 			sys.delay(5);
+
+// 			hLED1.off();
+// 			hLED2.off();
+// 			hLED3.off();
+
+// 			sys.delay(5);
+// 		}
+
+// 		while(true) {
+// 			driveUntilCheckpoint(500);
+// 		}
+
+// 		route = gps.getRoute(homeNode, target);
+// 		for(auto direction : *route) {
+			
+// 		}
+
+// 		break;
+// 	}
+
+// 	sys.delay(1000);
+// }
 
 	// cs.setFrequencyMode(ColorSensor::FREQUENCY::LOW);
 	// cs.setColorMode(ColorSensor::COLOR::WHITE);
