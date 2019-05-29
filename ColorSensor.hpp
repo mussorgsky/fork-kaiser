@@ -13,12 +13,13 @@ class ColorSensor
 
     public:
     enum FREQUENCY { FULL, MEDIUM, LOW };
-    enum COLOR { RED, GREEN, BLUE, WHITE };
+    enum COLOR { RED, GREEN, BLUE, WHITE, UNKNOWN };
     ColorSensor(hGPIO *s0, hGPIO *s1, hGPIO *s2, hGPIO *s3, hGPIO *oe, hGPIO *out) : s0(s0), s1(s1), s2(s2), s3(s3), oe(oe), out(out) {};
     void init();
     void setFrequencyMode(uint8_t mode);
     void setColorMode(uint8_t color);
-    float getIntensity();
+    uint16_t getPeriod();
+    uint8_t getColor();
 };
 
 // #include "ColorSensor.hpp"
@@ -83,7 +84,7 @@ void ColorSensor::setColorMode(uint8_t color)
     }
 }
 
-float ColorSensor::getIntensity()
+uint16_t ColorSensor::getPeriod()
 {
     bool start = out->read();
     uint64_t hmm = 0;
@@ -96,5 +97,33 @@ float ColorSensor::getIntensity()
     }
     uint32_t period = (sys.getUsTimVal() - begin);
 
-    return (float) period;
+    return period;
+}
+
+uint8_t ColorSensor::getColor() {
+        uint16_t r, g, b;
+		setColorMode(ColorSensor::COLOR::RED);
+		r = getPeriod();
+
+		setColorMode(ColorSensor::COLOR::GREEN);
+		g = getPeriod();
+
+		setColorMode(ColorSensor::COLOR::BLUE);
+		b = getPeriod();
+
+		uint8_t guess = COLOR::UNKNOWN;
+
+		if(g < 8000) {
+			guess = COLOR::GREEN;
+		}
+
+		if(b < 1600) {
+			guess = COLOR::BLUE;
+		}
+
+		if(r < 3000) {
+			guess = COLOR::RED;
+		}
+		
+        return guess;
 }
