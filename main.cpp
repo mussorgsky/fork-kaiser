@@ -5,8 +5,6 @@
 #include <vector>
 
 #include "ColorSensor.hpp"
-// #include "Node.hpp"
-// #include "Router.hpp"
 
 using namespace hFramework;
 using std::vector;
@@ -20,7 +18,7 @@ const int16_t ticksWinchTop = 8920;
 const int16_t ticksWinchUp = 8000;
 const int16_t ticksWinchDown = -3100;
 
-uint8_t jumps[] = { 15, 15, 8, 8, 8, 8, 8, 8, 15, 15, 0 };
+uint8_t jumps[] = { 10, 10, 5, 5, 5, 5, 5, 5, 15, 15, 0 };
 
 enum Decisions { FORWARD, LEFT, RIGHT };
 enum Winch { HOME, RAISED, TOP, LOWERED };
@@ -130,9 +128,9 @@ void hMain()
 	printf("Battery voltage: %fV\r\n", sys.getSupplyVoltage());
 
 	// Setting up the motors
-	leftMotor = &hMotD;
+	leftMotor = &hMotB;
 	rightMotor = &hMotA;
-	winchMotor = &hMotB;
+	winchMotor = &hMotC;
 	leftMotor->setEncoderPolarity(Polarity::Reversed);
 	rightMotor->setEncoderPolarity(Polarity::Reversed);
 	winchMotor->setEncoderPolarity(Polarity::Reversed);
@@ -146,29 +144,6 @@ void hMain()
 
 	ColorSensor cs = ColorSensor(&hExt.pin2, &hExt.pin1, &hExt.pin4, &hExt.pin3, &hExt.pin5, &hExt.serial.pinRx);
 	cs.init();
-
-	// sys.delay(2000);
-
-	// while(!hBtn1.isPressed()) {
-	// 	std::string colors[] = { "RED", "GREEN", "BLUE", "WHITE", "UNKNOWN" };
-	// 	uint8_t color = cs.getColor();
-
-	// 	printf("%s\r\n", colors[color].c_str());
-	// 	sys.delay(1500);
-	// }
-
-	// while(!hBtn1.isPressed()) {
-	// 	moveWinch(Winch::RAISED);
-	// 	sys.delay(2000);
-	// 	moveWinch(Winch::TOP);
-	// 	sys.delay(2000);
-	// 	moveWinch(Winch::HOME);
-	// 	sys.delay(2000);
-	// 	moveWinch(Winch::LOWERED);
-	// 	sys.delay(2000);
-	// 	moveWinch(Winch::HOME);
-	// 	sys.delay(2000);
-	// }
 
 	// Waiting for a button before going
 	while(!hBtn1.isPressed()) {
@@ -201,8 +176,15 @@ void hMain()
 			detecting = false;
 		}
 
-		if(checkpointsPassed == target - 1 && task == Tasks::DELIVER_TO_RACK) {
+		if(checkpointsPassed == target - 1 && task == Tasks::DELIVER_TO_RACK && decision != Decisions::RIGHT) {
 			decision = Decisions::RIGHT;
+
+			leftMotor->rotRel(ticksPerCM * 12, 500);
+			rightMotor->rotRel(ticksPerCM * -12, 500, true);
+			sys.delay(2000);
+
+			rightMotor->stopRegulation();
+			leftMotor->stopRegulation();
 		}
 
 		if(checkpointsPassed == target) {
@@ -210,10 +192,18 @@ void hMain()
 			leftMotor->stop();
 
 			if(task == Tasks::RETURN_TO_BASE) {
-				decision = Decisions::RIGHT;
+				sys.delay(1000);
 
-				rightMotor->rotRel(ticksPerCM * 25, 500);
-				leftMotor->rotRel(-ticksPerCM * 25, 500, true);
+				decision = Decisions::FORWARD;
+
+				rightMotor->rotRel(ticksPerCM * 24, 500);
+				leftMotor->rotRel(ticksPerCM * -24, 500, true);
+
+				// rightMotor->rotRel(ticksPerCM * 1, 500);
+				// leftMotor->rotRel(ticksPerCM * 1, 500, true);
+
+				// rightMotor->rotRel(ticksPerCM * 12, 500);
+				// leftMotor->rotRel(ticksPerCM * -12, 500, true);
 
 				rightMotor->stopRegulation();
 				leftMotor->stopRegulation();
@@ -224,6 +214,11 @@ void hMain()
 				targetShelf = Shelf::LOW;
 				task = Tasks::PICKUP_FROM_DOCK;
 				heldColor = ColorSensor::COLOR::UNKNOWN;
+				checkpointsPassed = -1;
+
+				sys.delay(1000);
+
+				continue;
 			}else if(task == Tasks::PICKUP_FROM_DOCK) {
 				pickUpCrate(Shelf::LOW);
 
@@ -264,13 +259,16 @@ void hMain()
 
 				moveWinch(Winch::HOME);
 
-				rightMotor->rotRel(ticksPerCM * 25, 500);
-				leftMotor->rotRel(-ticksPerCM * 25, 500, true);
+				rightMotor->rotRel(ticksPerCM * 21, 500);
+				leftMotor->rotRel(ticksPerCM * -21, 500, true);
 
 				rightMotor->stopRegulation();
 				leftMotor->stopRegulation();
 
 				decision = Decisions::FORWARD;
+
+				continue;
+
 			} else if(task == Tasks::DELIVER_TO_RACK) {
 				moveWinch(Winch::HOME);
 
@@ -281,21 +279,16 @@ void hMain()
 
 				moveWinch(Winch::HOME);
 
-				rightMotor->rotRel(ticksPerCM * -24, 500);
-				leftMotor->rotRel(ticksPerCM * -24, 500, true);
+				rightMotor->rotRel(ticksPerCM * -7, 500);
+				leftMotor->rotRel(ticksPerCM * -7, 500, true);
 
-				rightMotor->rotRel(ticksPerCM * 16, 500);
-				leftMotor->rotRel(-ticksPerCM * 16, 500, true);
+				sys.delay(1000);
+
+				leftMotor->rotRel(ticksPerCM * -11, 500);
+				rightMotor->rotRel(ticksPerCM * 11, 500, true);
 
 				rightMotor->stopRegulation();
 				leftMotor->stopRegulation();
-
-				while(!lineSensor->read()) {
-					rightMotor->setPower(300);
-					leftMotor->setPower(300);
-				}
-				rightMotor->setPower(0);
-				leftMotor->setPower(0);
 
 				if(heldColor == ColorSensor::COLOR::RED) {
 					stockedRed += 1;
@@ -312,6 +305,13 @@ void hMain()
 				task = Tasks::RETURN_TO_BASE;
 				decision = Decisions::FORWARD;
 				target = 10;
+
+				checkpointsPassed -= 1;
+
+				detectStopTime = sys.getRefTime();
+				detecting = false;
+
+				continue;
 			}
 		}
 
@@ -321,7 +321,7 @@ void hMain()
 		}
 
 		if(sense == lastSense) {
-			offset += 5;
+			offset += 2;
 		} else {
 			offset = 0;
 		}
@@ -330,10 +330,11 @@ void hMain()
 			offset = 500;
 		}
 
-		if(decision == Decisions::FORWARD) {
+		if(decision == Decisions::FORWARD && checkpointsPassed == 8) {
 			if(!boosted && !detecting && offset < 25) {
-				rightMotor->rotRel(ticksPerCM * jumps[checkpointsPassed], 500);
-				leftMotor->rotRel(ticksPerCM * jumps[checkpointsPassed], 500, true);
+				rightMotor->setParallelMode();
+				rightMotor->rotRel(ticksPerCM * jumps[checkpointsPassed], 500, true);
+				rightMotor->setSingleMode();
 
 				rightMotor->stopRegulation();
 				leftMotor->stopRegulation();
