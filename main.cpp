@@ -18,7 +18,7 @@ const int16_t ticksWinchTop = 8920;
 const int16_t ticksWinchUp = 8000;
 const int16_t ticksWinchDown = -3100;
 
-uint8_t jumps[] = { 10, 10, 5, 5, 5, 5, 5, 5, 15, 15, 0 };
+uint8_t jumps[] = { 10, 10, 5, 5, 5, 5, 5, 5, 5, 15, 15, 0 };
 
 enum Decisions { FORWARD, LEFT, RIGHT };
 enum Winch { HOME, RAISED, TOP, LOWERED };
@@ -153,7 +153,7 @@ void hMain()
 	//
 	bool detecting = true;
 	uint64_t detectStopTime = 0;
-	uint64_t ignorancePeriod = 450;
+	uint64_t ignorancePeriod = 1250;
 	uint8_t decision = Decisions::RIGHT;
 
 	bool lastSense = lineSensor->read();
@@ -168,7 +168,7 @@ void hMain()
 		if(detecting && marker) {
 			rightMotor->setPower(0);
 			leftMotor->setPower(0);
-			sys.delay(1500);
+			sys.delay(250);
 
 			checkpointsPassed += 1;
 
@@ -181,7 +181,7 @@ void hMain()
 
 			leftMotor->rotRel(ticksPerCM * 12, 500);
 			rightMotor->rotRel(ticksPerCM * -12, 500, true);
-			sys.delay(2000);
+			sys.delay(1000);
 
 			rightMotor->stopRegulation();
 			leftMotor->stopRegulation();
@@ -196,8 +196,8 @@ void hMain()
 
 				decision = Decisions::FORWARD;
 
-				rightMotor->rotRel(ticksPerCM * 24, 500);
-				leftMotor->rotRel(ticksPerCM * -24, 500, true);
+				rightMotor->rotRel(ticksPerCM * 20, 500);
+				leftMotor->rotRel(ticksPerCM * -20, 500, true);
 
 				// rightMotor->rotRel(ticksPerCM * 1, 500);
 				// leftMotor->rotRel(ticksPerCM * 1, 500, true);
@@ -229,17 +229,17 @@ void hMain()
 
 				if(color == ColorSensor::COLOR::RED) {
 					hLED1.on();
-					target = 2 + stockedRed + 1;
+					target = 3 + stockedRed + 1;
 					targetShelf = Shelf::HIGH;
 				}
 				if(color == ColorSensor::COLOR::GREEN) {
 					hLED2.on();
-					target = 2 + stockedGreen + 1;
+					target = 3 + stockedGreen + 1;
 					targetShelf = Shelf::LOW;
 				}
 				if(color == ColorSensor::COLOR::BLUE) {
 					hLED3.on();
-					target = 5 + stockedBlue + 1;
+					target = 6 + stockedBlue + 1;
 					targetShelf = Shelf::HIGH;
 				}
 
@@ -279,8 +279,8 @@ void hMain()
 
 				moveWinch(Winch::HOME);
 
-				rightMotor->rotRel(ticksPerCM * -7, 500);
-				leftMotor->rotRel(ticksPerCM * -7, 500, true);
+				rightMotor->rotRel(ticksPerCM * -5, 500);
+				leftMotor->rotRel(ticksPerCM * -5, 500, true);
 
 				sys.delay(1000);
 
@@ -304,11 +304,11 @@ void hMain()
 
 				task = Tasks::RETURN_TO_BASE;
 				decision = Decisions::FORWARD;
-				target = 10;
+				target = 11;
 
 				checkpointsPassed -= 1;
 
-				detectStopTime = sys.getRefTime();
+				detectStopTime = sys.getRefTime() + ignorancePeriod + 10;
 				detecting = false;
 
 				continue;
@@ -326,11 +326,11 @@ void hMain()
 			offset = 0;
 		}
 
-		if(offset > 500) {
-			offset = 500;
+		if(offset > 400) {
+			offset = 400;
 		}
 
-		if(decision == Decisions::FORWARD && checkpointsPassed == 8) {
+		if(decision == Decisions::FORWARD && checkpointsPassed == 9) {
 			if(!boosted && !detecting && offset < 25) {
 				rightMotor->setParallelMode();
 				rightMotor->rotRel(ticksPerCM * jumps[checkpointsPassed], 500, true);
@@ -367,9 +367,9 @@ void hMain()
 
 		if(lineSensor->read()) {
 			rightMotor->setPower(0 - offset);
-			leftMotor->setPower(500);
+			leftMotor->setPower(400);
 		} else {
-			rightMotor->setPower(500);
+			rightMotor->setPower(400);
 			leftMotor->setPower(0 - offset);
 		}
 
