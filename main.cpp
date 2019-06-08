@@ -15,7 +15,7 @@ int8_t checkpointsPassed = -1;
 
 const uint8_t ticksPerCM = 49;
 const int16_t ticksWinchTop = 8920;
-const int16_t ticksWinchUp = 8000;
+const int16_t ticksWinchUp = 7800;//8000;
 const int16_t ticksWinchDown = -3100;
 
 uint8_t jumps[] = { 10, 10, 5, 5, 5, 5, 5, 5, 5, 15, 15, 0 };
@@ -34,6 +34,8 @@ uint8_t heldColor = ColorSensor::COLOR::UNKNOWN;
 uint8_t stockedRed = 0;
 uint8_t stockedGreen = 0;
 uint8_t stockedBlue = 0;
+uint8_t stockedWhite = 0;
+const uint8_t maxStock = 3;
 
 void moveWinch(uint8_t targetState)
 {
@@ -145,6 +147,11 @@ void hMain()
 	ColorSensor cs = ColorSensor(&hExt.pin2, &hExt.pin1, &hExt.pin4, &hExt.pin3, &hExt.pin5, &hExt.serial.pinRx);
 	cs.init();
 
+	// while(true) {
+	// 	cs.getColor();
+	// 	sys.delay(1500);	
+	// }
+
 	// Waiting for a button before going
 	while(!hBtn1.isPressed()) {
 		sys.delay(100);
@@ -224,35 +231,74 @@ void hMain()
 
 				sys.delay(250);
 
-				uint8_t color = cs.getColor();
-				heldColor = color;
+				bool allGood = false;
+				do {
+					uint8_t color = cs.getColor();
+					heldColor = color;
 
-				if(color == ColorSensor::COLOR::RED) {
-					hLED1.on();
-					target = 3 + stockedRed + 1;
-					targetShelf = Shelf::HIGH;
-				}
-				if(color == ColorSensor::COLOR::GREEN) {
-					hLED2.on();
-					target = 3 + stockedGreen + 1;
-					targetShelf = Shelf::LOW;
-				}
-				if(color == ColorSensor::COLOR::BLUE) {
-					hLED3.on();
-					target = 6 + stockedBlue + 1;
-					targetShelf = Shelf::HIGH;
-				}
+					hLED1.off();
+					hLED2.off();
+					hLED3.off();
 
-				if(color == ColorSensor::COLOR::UNKNOWN) {
-					while(true) {
-						hLED1.toggle();
-						hLED2.toggle();
-						hLED3.toggle();
+					if(color == ColorSensor::COLOR::RED) {
+						hLED1.on();
+						target = 3 + stockedRed + 1;
+						targetShelf = Shelf::HIGH;
+						if(stockedRed < maxStock) {
+							allGood = true;
+						}
+					}
+					if(color == ColorSensor::COLOR::GREEN) {
+						hLED2.on();
+						target = 3 + stockedGreen + 1;
+						targetShelf = Shelf::LOW;
+						if(stockedGreen < maxStock) {
+							allGood = true;
+						}
+					}
+					if(color == ColorSensor::COLOR::BLUE) {
+						hLED3.on();
+						target = 6 + stockedBlue + 1;
+						targetShelf = Shelf::HIGH;
+						if(stockedBlue < maxStock) {
+							allGood = true;
+						}
+					}
+					if(color == ColorSensor::COLOR::WHITE) {
+						hLED3.on();
+						target = 6 + stockedWhite + 1;
+						targetShelf = Shelf::LOW;
+						if(stockedWhite < maxStock) {
+							allGood = true;
+						}
+					}
+
+					if(color == ColorSensor::COLOR::UNKNOWN) {
+						for(uint8_t i = 0; i < 2; i++) {
+							hLED1.toggle();
+							hLED2.toggle();
+							hLED3.toggle();
+							sys.delay(250);
+						}
+					}
+
+					if(!allGood) {
+						rightMotor->rotRel(ticksPerCM * -7, 500);
+						leftMotor->rotRel(ticksPerCM * -7, 500, true);
+						putCrateDown(Shelf::LOW);
+						rightMotor->rotRel(ticksPerCM * -7, 500);
+						leftMotor->rotRel(ticksPerCM * -7, 500, true);
+						while(!hBtn1.isPressed()) {
+							sys.delay(100);
+						}
+						sys.delay(500);
+						pickUpCrate(Shelf::LOW);
 						sys.delay(250);
 					}
-				} else {
-					task = Tasks::DELIVER_TO_RACK;
-				}
+				} while(!allGood);
+				
+				task = Tasks::DELIVER_TO_RACK;
+				
 
 				rightMotor->rotRel(ticksPerCM * -7, 500);
 				leftMotor->rotRel(ticksPerCM * -7, 500, true);

@@ -111,6 +111,8 @@ uint8_t ColorSensor::getColor() {
 		setColorMode(ColorSensor::COLOR::BLUE);
 		b = getPeriod();
 
+        // printf("R:%d\tG:%d\tB:%d\r\n", r, g, b);
+
 		uint8_t guess = COLOR::UNKNOWN;
 
 		if(g < 8000) {
@@ -124,6 +126,10 @@ uint8_t ColorSensor::getColor() {
 		if(r < 3000) {
 			guess = COLOR::RED;
 		}
+
+        if(r < 2700 && g < 2900 && b < 1000) {
+            guess = COLOR::WHITE;
+        }
 		
         return guess;
 }
