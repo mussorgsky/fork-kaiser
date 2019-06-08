@@ -341,3 +341,5 @@ Makefile
 *.elf
 *.bin
 cmake_install.cmake
+
+.ninja_log
