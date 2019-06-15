@@ -348,6 +348,10 @@ void hMain()
 					stockedBlue += 1;
 				}
 
+				if(heldColor == ColorSensor::COLOR::WHITE) {
+					stockedWhite += 1;
+				}
+
 				task = Tasks::RETURN_TO_BASE;
 				decision = Decisions::FORWARD;
 				target = 11;
