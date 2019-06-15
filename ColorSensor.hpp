@@ -6,9 +6,9 @@
         Zainicjować go
         Pobrać kolor
 
-    Przykład:
+    Przykładowy kod:
         ColorSensor cs = ColorSensor(&hExt.pin2, &hExt.pin1, &hExt.pin4, &hExt.pin3, &hExt.pin5, &hExt.serial.pinRx);
-	    cs.init();
+	cs.init();
         while(true) {
             uint8 color = cs.getColor();
             printf("%d\r\n", color);
